@@ -1,7 +1,7 @@
 #![feature(type_alias_impl_trait)]
 use std::env;
 use std::error;
-use std::fmt::{ Display, self };
+use std::fmt::{self, Display};
 use std::fs;
 
 mod tokenizer;
@@ -10,7 +10,7 @@ use tokenizer::*;
 #[derive(Debug)]
 enum ProgramError {
     NoArguments,
-    InvalidPath
+    InvalidPath,
 }
 
 impl Display for ProgramError {
@@ -32,7 +32,7 @@ fn main() -> Result<(), ProgramError> {
                 for token in Tokenizer::new(&file) {
                     println!("{:?}", token);
                 }
-                
+
                 Ok(())
             } else {
                 Err(ProgramError::InvalidPath)

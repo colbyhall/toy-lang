@@ -1,12 +1,13 @@
-// Single Line Comment
-/** 
- * Multi Line Comment 
- */
-
 struct Foo {
     a: i32,
     b: char,
 }
+
+// Single Line Comment
+/** 
+ * Multi Line Comment 
+ * /* nested */
+ */
 
 fn main() {
     let foo = Foo{
