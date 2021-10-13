@@ -243,7 +243,9 @@ impl<'a> Iterator for Tokenizer<'a> {
 
                         Some(Token::Comment)
                     } else if next == '*' {
-                        self.eat_multiline_comment_recursive();
+                        if self.eat_multiline_comment_recursive() {
+                            todo!("Error Handling");
+                        }
                         Some(Token::Comment)
                     } else {
                         Some(Token::Operator(Operator::Backslack))
