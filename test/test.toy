@@ -1,0 +1,28 @@
+// Single Line Comment
+/** 
+ * Multi Line Comment 
+ */
+
+struct Foo {
+    a: i32,
+    b: char,
+}
+
+fn main() {
+    let foo = Foo{
+        a: 42,
+        b: '2',
+    };
+
+    bar(foo);
+}
+
+fn bar(foo: Foo) -> bool {
+    if foo == 43 {
+        println("Hello World!");
+        true
+    } else {
+        println("testing123");
+        false
+    }
+}
