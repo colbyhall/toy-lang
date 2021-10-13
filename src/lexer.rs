@@ -1,3 +1,5 @@
+use std::error;
+use std::fmt;
 use std::iter::Iterator;
 
 #[derive(Debug, Copy, Clone)]
@@ -52,6 +54,17 @@ pub struct Token<'a> {
 	pub line: usize,
 	pub column: usize,
 }
+
+#[derive(Debug)]
+pub enum LexerError {}
+
+impl fmt::Display for LexerError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "{:?}", self)
+	}
+}
+
+impl error::Error for LexerError {}
 
 #[derive(Debug, Clone)]
 pub struct Lexer<'a> {

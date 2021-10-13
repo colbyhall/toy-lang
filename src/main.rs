@@ -10,6 +10,9 @@ use std::fs;
 mod lexer;
 use lexer::*;
 
+mod parser;
+use parser::*;
+
 #[derive(Debug)]
 enum ProgramError {
 	NoArguments,
