@@ -1,6 +1,7 @@
 struct Foo {
     a: i32,
     b: char,
+	c: f32,
 }
 
 // Single Line Comment
@@ -12,7 +13,8 @@ struct Foo {
 fn main() {
     let foo = Foo{
         a: 42,
-        b: '2',
+        b: '😀',
+		c: 450.0,
     };
 
     bar(foo);

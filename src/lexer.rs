@@ -42,8 +42,8 @@ pub enum TokenVariant {
 	String,
 	Number,
 
-	SingleLineComment,
-	MultiLineComment,
+	LineComment,
+	BlockComment,
 }
 
 #[derive(Debug, Clone)]
@@ -56,7 +56,14 @@ pub struct Token<'a> {
 }
 
 #[derive(Debug)]
-pub enum LexerError {}
+pub enum LexerError {
+	UnterminatedSingleQuote,
+	UnterminatedDoubleQuote,
+	InvalidCharacterLiteral,
+	UnterminatedBlockComment,
+	MultipleDecimalPoints,
+	InvalidNumberLiteral,
+}
 
 impl fmt::Display for LexerError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -109,14 +116,14 @@ impl<'a> Lexer<'a> {
 		result
 	}
 
-	pub fn peek(&self) -> Option<Token> {
+	pub fn peek(&self) -> Option<Result<Token, LexerError>> {
 		let mut clone = self.clone();
 		clone.next()
 	}
 }
 
 impl<'a> Iterator for Lexer<'a> {
-	type Item = Token<'a>;
+	type Item = Result<Token<'a>, LexerError>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let c = self.contents.chars().next()?;
@@ -154,13 +161,13 @@ impl<'a> Iterator for Lexer<'a> {
 				_ => TokenVariant::Identifier,
 			};
 
-			return Some(Token {
+			return Some(Ok(Token {
 				variant,
 
 				contents: identifier,
 				line,
 				column,
-			});
+			}));
 		}
 
 		if c.is_numeric() {
@@ -173,47 +180,56 @@ impl<'a> Iterator for Lexer<'a> {
 				for (i, c) in self.contents.chars().enumerate() {
 					if c == '.' {
 						if decimal_point {
-							todo!("Error Handling");
+							return Some(Err(LexerError::MultipleDecimalPoints));
 						}
 						decimal_point = true;
+						continue;
 					}
 
-					if !(c.is_numeric() || i == 0 && c == '-') {
+					if c.is_alphabetic() || (i == 0 && (c != '-' && !c.is_numeric())) {
+						return Some(Err(LexerError::InvalidNumberLiteral));
+					}
+
+					if !c.is_numeric() {
 						len = i;
 						break;
 					}
 				}
 
 				let number = self.advance(len);
-				return Some(Token {
+				return Some(Ok(Token {
 					variant: TokenVariant::Number,
 
 					contents: number,
 					line,
 					column,
-				});
+				}));
 			}
 		} else if c == '\'' {
 			// Character tokenization
 			if let Some(value) = self.contents.chars().nth(1) {
+				if value == '\'' {
+					return Some(Err(LexerError::InvalidCharacterLiteral));
+				}
+
 				if let Some(end) = self.contents.chars().nth(2) {
 					if end == '\'' {
 						let contents = self.advance(2 + value.len_utf8());
-						return Some(Token {
+						return Some(Ok(Token {
 							variant: TokenVariant::Char,
 
 							contents,
 							line,
 							column,
-						});
+						}));
 					} else {
-						todo!("Error Handling");
+						return Some(Err(LexerError::UnterminatedSingleQuote));
 					}
 				} else {
-					todo!("Error Handling");
+					return Some(Err(LexerError::UnterminatedSingleQuote));
 				}
 			} else {
-				todo!("Error Handling");
+				return Some(Err(LexerError::UnterminatedSingleQuote));
 			}
 		} else if c == '\"' {
 			// String tokenization
@@ -222,19 +238,19 @@ impl<'a> Iterator for Lexer<'a> {
 
 			if let Some((len, _)) = chars.find(|(_, c)| *c == '"') {
 				let string = self.advance(len + 1);
-				return Some(Token {
+				return Some(Ok(Token {
 					variant: TokenVariant::String,
 
 					contents: string,
 					line,
 					column,
-				});
+				}));
 			} else {
-				todo!("Error Handling");
+				return Some(Err(LexerError::UnterminatedDoubleQuote));
 			}
 		}
 
-		if c == '/' {
+		Some(if c == '/' {
 			if let Some(next) = self.contents.chars().nth(1) {
 				if next == '/' {
 					let contents = if let Some((advance, _)) =
@@ -245,8 +261,8 @@ impl<'a> Iterator for Lexer<'a> {
 						self.contents
 					};
 
-					Some(Token {
-						variant: TokenVariant::SingleLineComment,
+					Ok(Token {
+						variant: TokenVariant::LineComment,
 
 						contents,
 						line,
@@ -282,7 +298,7 @@ impl<'a> Iterator for Lexer<'a> {
 					}
 
 					if level > 0 {
-						todo!("Error Handling");
+						return Some(Err(LexerError::UnterminatedBlockComment));
 					}
 
 					let len = if let Some((len, _)) = chars.next() {
@@ -292,8 +308,8 @@ impl<'a> Iterator for Lexer<'a> {
 					};
 
 					let contents = self.advance(len);
-					Some(Token {
-						variant: TokenVariant::MultiLineComment,
+					Ok(Token {
+						variant: TokenVariant::BlockComment,
 
 						contents,
 						line,
@@ -301,7 +317,7 @@ impl<'a> Iterator for Lexer<'a> {
 					})
 				} else {
 					let contents = self.advance(1);
-					Some(Token {
+					Ok(Token {
 						variant: TokenVariant::Backslash,
 
 						contents,
@@ -311,7 +327,7 @@ impl<'a> Iterator for Lexer<'a> {
 				}
 			} else {
 				let contents = self.advance(1);
-				Some(Token {
+				Ok(Token {
 					variant: TokenVariant::Backslash,
 
 					contents,
@@ -350,7 +366,7 @@ impl<'a> Iterator for Lexer<'a> {
 					column,
 				}
 			};
-			Some(token)
+			Ok(token)
 		} else {
 			let variant = match c {
 				'{' => TokenVariant::LeftCurly,
@@ -373,13 +389,13 @@ impl<'a> Iterator for Lexer<'a> {
 				_ => unreachable!(),
 			};
 			let contents = self.advance(c.len_utf8());
-			Some(Token {
+			Ok(Token {
 				variant,
 
 				contents,
 				line,
 				column,
 			})
-		}
+		})
 	}
 }

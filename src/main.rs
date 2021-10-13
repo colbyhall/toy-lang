@@ -36,7 +36,7 @@ fn main() -> Result<(), ProgramError> {
 				println!("Compiling {:?}", path);
 
 				for token in Lexer::new(&file) {
-					println!("{:?}", token);
+					println!("{:?}", token.unwrap());
 				}
 
 				Ok(())
