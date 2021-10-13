@@ -255,7 +255,7 @@ impl<'a> Iterator for Tokenizer<'a> {
             } else if c == '-' {
                 let token = if let Some(next) = self.contents.chars().nth(1) {
                     if next == '>' {
-                        self.contents = &self.contents["->".len()..len]; 
+                        self.contents = &self.contents["->".len()..len];
                         Token::Operator(Operator::Arrow)
                     } else {
                         self.contents = &self.contents[c.len_utf8()..len];
