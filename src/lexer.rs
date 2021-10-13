@@ -1,5 +1,4 @@
 use std::iter::Iterator;
-use std::iter::Peekable;
 
 #[derive(Debug, Copy, Clone)]
 pub enum TokenVariant {
@@ -63,13 +62,13 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(contents: &'a str) -> Peekable<Self> {
+    pub fn new(contents: &'a str) -> Self {
         Self {
             contents,
 
             line: 1,
             column: 1,
-        }.peekable()
+        }
     }
 
     fn advance(&mut self, amount: usize) -> &'a str {
@@ -95,6 +94,11 @@ impl<'a> Lexer<'a> {
         let result = &self.contents[0..amount];
         self.contents = &self.contents[amount..len];
         result
+    }
+
+    pub fn peek(&self) -> Option<Token> {
+        let mut clone = self.clone();
+        clone.next()
     }
 }
 
