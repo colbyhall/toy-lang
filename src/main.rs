@@ -29,8 +29,12 @@ fn main() -> Result<(), ProgramError> {
             if let Ok(file) = fs::read_to_string(path) {
                 println!("Compiling {:?}", path);
 
-                for token in Tokenizer::new(&file) {
-                    println!("{:?}", token);
+                let mut tokenizer = Tokenizer::new(&file);
+                loop {
+                    match tokenizer.next() {
+                        Some(token) => println!("{:?}", token),
+                        None => break,
+                    }
                 }
 
                 Ok(())
