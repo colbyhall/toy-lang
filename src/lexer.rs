@@ -1,3 +1,6 @@
+use std::iter::Iterator;
+use std::iter::Peekable;
+
 #[derive(Debug, Copy, Clone)]
 pub enum TokenVariant {
     Identifier,
@@ -52,21 +55,21 @@ pub struct Token<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Tokenizer<'a> {
+pub struct Lexer<'a> {
     contents: &'a str,
 
     line: usize,
     column: usize,
 }
 
-impl<'a> Tokenizer<'a> {
-    pub fn new(contents: &'a str) -> Self {
+impl<'a> Lexer<'a> {
+    pub fn new(contents: &'a str) -> Peekable<Self> {
         Self {
             contents,
 
             line: 1,
             column: 1,
-        }
+        }.peekable()
     }
 
     fn advance(&mut self, amount: usize) -> &'a str {
@@ -93,8 +96,12 @@ impl<'a> Tokenizer<'a> {
         self.contents = &self.contents[amount..len];
         result
     }
+}
 
-    pub fn next(&mut self) -> Option<Token<'a>> {
+impl<'a> Iterator for Lexer<'a> {
+    type Item = Token<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
         let c = self.contents.chars().next()?;
 
         let line = self.line;
@@ -357,10 +364,5 @@ impl<'a> Tokenizer<'a> {
                 column,
             })
         }
-    }
-
-    pub fn peek(&self) -> Option<Token> {
-        let mut temp = self.clone();
-        temp.next()
     }
 }

@@ -4,8 +4,8 @@ use std::error;
 use std::fmt::{self, Display};
 use std::fs;
 
-mod tokenizer;
-use tokenizer::*;
+mod lexer;
+use lexer::*;
 
 #[derive(Debug)]
 enum ProgramError {
@@ -29,12 +29,8 @@ fn main() -> Result<(), ProgramError> {
             if let Ok(file) = fs::read_to_string(path) {
                 println!("Compiling {:?}", path);
 
-                let mut tokenizer = Tokenizer::new(&file);
-                loop {
-                    match tokenizer.next() {
-                        Some(token) => println!("{:?}", token),
-                        None => break,
-                    }
+                for token in Lexer::new(&file) {
+                    println!("{:?}", token);
                 }
 
                 Ok(())
