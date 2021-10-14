@@ -2,7 +2,7 @@ use std::error;
 use std::fmt;
 use std::iter::Iterator;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum TokenVariant {
 	Identifier,
 
@@ -44,6 +44,8 @@ pub enum TokenVariant {
 
 	LineComment,
 	BlockComment,
+
+	EndOfFile,
 }
 
 #[derive(Debug, Clone)]
@@ -116,20 +118,22 @@ impl<'a> Lexer<'a> {
 		result
 	}
 
-	pub fn peek(&self) -> Option<Result<Token, LexerError>> {
-		let mut clone = self.clone();
-		clone.next()
-	}
-}
-
-impl<'a> Iterator for Lexer<'a> {
-	type Item = Result<Token<'a>, LexerError>;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		let c = self.contents.chars().next()?;
-
+	pub fn next(&mut self) -> Result<Token<'a>, LexerError> {
 		let line = self.line;
 		let column = self.column;
+
+		let c = match self.contents.chars().next() {
+			Some(c) => c,
+			None => {
+				return Ok(Token {
+					variant: TokenVariant::EndOfFile,
+
+					contents: self.contents,
+					line,
+					column,
+				})
+			}
+		};
 
 		if c.is_whitespace() {
 			self.advance(c.len_utf8());
@@ -161,13 +165,13 @@ impl<'a> Iterator for Lexer<'a> {
 				_ => TokenVariant::Identifier,
 			};
 
-			return Some(Ok(Token {
+			return Ok(Token {
 				variant,
 
 				contents: identifier,
 				line,
 				column,
-			}));
+			});
 		}
 
 		if c.is_numeric() {
@@ -180,14 +184,14 @@ impl<'a> Iterator for Lexer<'a> {
 				for (i, c) in self.contents.chars().enumerate() {
 					if c == '.' {
 						if decimal_point {
-							return Some(Err(LexerError::MultipleDecimalPoints));
+							return Err(LexerError::MultipleDecimalPoints);
 						}
 						decimal_point = true;
 						continue;
 					}
 
 					if c.is_alphabetic() || (i == 0 && (c != '-' && !c.is_numeric())) {
-						return Some(Err(LexerError::InvalidNumberLiteral));
+						return Err(LexerError::InvalidNumberLiteral);
 					}
 
 					if !c.is_numeric() {
@@ -197,39 +201,39 @@ impl<'a> Iterator for Lexer<'a> {
 				}
 
 				let number = self.advance(len);
-				return Some(Ok(Token {
+				return Ok(Token {
 					variant: TokenVariant::Number,
 
 					contents: number,
 					line,
 					column,
-				}));
+				});
 			}
 		} else if c == '\'' {
 			// Character tokenization
 			if let Some(value) = self.contents.chars().nth(1) {
 				if value == '\'' {
-					return Some(Err(LexerError::InvalidCharacterLiteral));
+					return Err(LexerError::InvalidCharacterLiteral);
 				}
 
 				if let Some(end) = self.contents.chars().nth(2) {
 					if end == '\'' {
 						let contents = self.advance(2 + value.len_utf8());
-						return Some(Ok(Token {
+						return Ok(Token {
 							variant: TokenVariant::Char,
 
 							contents,
 							line,
 							column,
-						}));
+						});
 					} else {
-						return Some(Err(LexerError::UnterminatedSingleQuote));
+						return Err(LexerError::UnterminatedSingleQuote);
 					}
 				} else {
-					return Some(Err(LexerError::UnterminatedSingleQuote));
+					return Err(LexerError::UnterminatedSingleQuote);
 				}
 			} else {
-				return Some(Err(LexerError::UnterminatedSingleQuote));
+				return Err(LexerError::UnterminatedSingleQuote);
 			}
 		} else if c == '\"' {
 			// String tokenization
@@ -238,19 +242,19 @@ impl<'a> Iterator for Lexer<'a> {
 
 			if let Some((len, _)) = chars.find(|(_, c)| *c == '"') {
 				let string = self.advance(len + 1);
-				return Some(Ok(Token {
+				return Ok(Token {
 					variant: TokenVariant::String,
 
 					contents: string,
 					line,
 					column,
-				}));
+				});
 			} else {
-				return Some(Err(LexerError::UnterminatedDoubleQuote));
+				return Err(LexerError::UnterminatedDoubleQuote);
 			}
 		}
 
-		Some(if c == '/' {
+		if c == '/' {
 			if let Some(next) = self.contents.chars().nth(1) {
 				if next == '/' {
 					let contents = if let Some((advance, _)) =
@@ -298,7 +302,7 @@ impl<'a> Iterator for Lexer<'a> {
 					}
 
 					if level > 0 {
-						return Some(Err(LexerError::UnterminatedBlockComment));
+						return Err(LexerError::UnterminatedBlockComment);
 					}
 
 					let len = if let Some((len, _)) = chars.next() {
@@ -396,6 +400,11 @@ impl<'a> Iterator for Lexer<'a> {
 				line,
 				column,
 			})
-		})
+		}
+	}
+
+	pub fn peek(&self) -> Result<Token, LexerError> {
+		let mut clone = self.clone();
+		clone.next()
 	}
 }

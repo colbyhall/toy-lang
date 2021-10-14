@@ -35,10 +35,6 @@ fn main() -> Result<(), ProgramError> {
 			if let Ok(file) = fs::read_to_string(path) {
 				println!("Compiling {:?}", path);
 
-				for token in Lexer::new(&file) {
-					println!("{:?}", token.unwrap());
-				}
-
 				Ok(())
 			} else {
 				Err(ProgramError::InvalidPath)
