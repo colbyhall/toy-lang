@@ -17,6 +17,7 @@ use parser::*;
 enum ProgramError {
 	NoArguments,
 	InvalidPath,
+	ParseError(ParseError),
 }
 
 impl Display for ProgramError {
@@ -34,6 +35,8 @@ fn main() -> Result<(), ProgramError> {
 		if path.ends_with(".toy") {
 			if let Ok(file) = fs::read_to_string(path) {
 				println!("Compiling {:?}", path);
+
+				Parser::parse(&file).map_err(ProgramError::ParseError)?;
 
 				Ok(())
 			} else {

@@ -2,6 +2,7 @@ struct Foo {
     a: i32,
     b: char,
 	c: f32,
+	d: String,
 }
 
 // Single Line Comment
@@ -11,21 +12,20 @@ struct Foo {
  */
 
 fn main() {
-    let foo = Foo{
+    let mut foo = Foo{
         a: 42,
         b: '😀',
 		c: 450.0,
+		d: "Hello World",
     };
 
-    bar(foo);
-}
+	fn bar(foo: Foo) -> bool {
+		return foo > 43;
+	}
 
-fn bar(foo: Foo) -> bool {
-    if foo == 43 {
-        println("Hello World!");
-        true
-    } else {
-        println("testing123");
-        false
-    }
+    // if bar(foo) {
+	// 	foo.a = 123;
+	// } else {
+	// 	foo.c = 45.0;
+	// }
 }

@@ -28,8 +28,11 @@ pub enum TokenVariant {
 	Comma,
 	Period,
 	Equal,
+	NotEqual,
 	LessThan,
 	GreaterThan,
+	LessThanEqual,
+	GreaterThanEqual,
 	Bang,
 	Backslash,
 	Plus,
@@ -49,10 +52,10 @@ pub enum TokenVariant {
 }
 
 #[derive(Debug, Clone)]
-pub struct Token<'a> {
+pub struct Token {
 	pub variant: TokenVariant,
 
-	pub contents: &'a str,
+	pub contents: String,
 	pub line: usize,
 	pub column: usize,
 }
@@ -118,7 +121,7 @@ impl<'a> Lexer<'a> {
 		result
 	}
 
-	pub fn next(&mut self) -> Result<Token<'a>, LexerError> {
+	pub fn next(&mut self) -> Result<Token, LexerError> {
 		let line = self.line;
 		let column = self.column;
 
@@ -128,7 +131,7 @@ impl<'a> Lexer<'a> {
 				return Ok(Token {
 					variant: TokenVariant::EndOfFile,
 
-					contents: self.contents,
+					contents: self.contents.to_string(),
 					line,
 					column,
 				})
@@ -168,7 +171,7 @@ impl<'a> Lexer<'a> {
 			return Ok(Token {
 				variant,
 
-				contents: identifier,
+				contents: identifier.to_string(),
 				line,
 				column,
 			});
@@ -204,7 +207,7 @@ impl<'a> Lexer<'a> {
 				return Ok(Token {
 					variant: TokenVariant::Number,
 
-					contents: number,
+					contents: number.to_string(),
 					line,
 					column,
 				});
@@ -218,7 +221,7 @@ impl<'a> Lexer<'a> {
 
 				if let Some(end) = self.contents.chars().nth(2) {
 					if end == '\'' {
-						let contents = self.advance(2 + value.len_utf8());
+						let contents = self.advance(2 + value.len_utf8()).to_string();
 						return Ok(Token {
 							variant: TokenVariant::Char,
 
@@ -241,7 +244,7 @@ impl<'a> Lexer<'a> {
 			chars.next(); // Advance past "
 
 			if let Some((len, _)) = chars.find(|(_, c)| *c == '"') {
-				let string = self.advance(len + 1);
+				let string = self.advance(len + 1).to_string();
 				return Ok(Token {
 					variant: TokenVariant::String,
 
@@ -263,7 +266,8 @@ impl<'a> Lexer<'a> {
 						self.advance(advance + 1)
 					} else {
 						self.contents
-					};
+					}
+					.to_string();
 
 					Ok(Token {
 						variant: TokenVariant::LineComment,
@@ -311,7 +315,7 @@ impl<'a> Lexer<'a> {
 						self.contents.len()
 					};
 
-					let contents = self.advance(len);
+					let contents = self.advance(len).to_string();
 					Ok(Token {
 						variant: TokenVariant::BlockComment,
 
@@ -320,7 +324,7 @@ impl<'a> Lexer<'a> {
 						column,
 					})
 				} else {
-					let contents = self.advance(1);
+					let contents = self.advance(1).to_string();
 					Ok(Token {
 						variant: TokenVariant::Backslash,
 
@@ -330,7 +334,7 @@ impl<'a> Lexer<'a> {
 					})
 				}
 			} else {
-				let contents = self.advance(1);
+				let contents = self.advance(1).to_string();
 				Ok(Token {
 					variant: TokenVariant::Backslash,
 
@@ -342,7 +346,7 @@ impl<'a> Lexer<'a> {
 		} else if c == '-' {
 			let token = if let Some(next) = self.contents.chars().nth(1) {
 				if next == '>' {
-					let contents = self.advance("->".len());
+					let contents = self.advance("->".len()).to_string();
 					Token {
 						variant: TokenVariant::Arrow,
 
@@ -351,7 +355,7 @@ impl<'a> Lexer<'a> {
 						column,
 					}
 				} else {
-					let contents = self.advance(1);
+					let contents = self.advance(1).to_string();
 					Token {
 						variant: TokenVariant::Minus,
 
@@ -361,9 +365,105 @@ impl<'a> Lexer<'a> {
 					}
 				}
 			} else {
-				let contents = self.advance(1);
+				let contents = self.advance(1).to_string();
 				Token {
 					variant: TokenVariant::Minus,
+
+					contents,
+					line,
+					column,
+				}
+			};
+			Ok(token)
+		} else if c == '<' {
+			let token = if let Some(next) = self.contents.chars().nth(1) {
+				if next == '=' {
+					let contents = self.advance("<=".len()).to_string();
+					Token {
+						variant: TokenVariant::LessThanEqual,
+
+						contents,
+						line,
+						column,
+					}
+				} else {
+					let contents = self.advance(1).to_string();
+					Token {
+						variant: TokenVariant::LessThan,
+
+						contents,
+						line,
+						column,
+					}
+				}
+			} else {
+				let contents = self.advance(1).to_string();
+				Token {
+					variant: TokenVariant::LessThan,
+
+					contents,
+					line,
+					column,
+				}
+			};
+			Ok(token)
+		} else if c == '>' {
+			let token = if let Some(next) = self.contents.chars().nth(1) {
+				if next == '=' {
+					let contents = self.advance(">=".len()).to_string();
+					Token {
+						variant: TokenVariant::GreaterThanEqual,
+
+						contents,
+						line,
+						column,
+					}
+				} else {
+					let contents = self.advance(1).to_string();
+					Token {
+						variant: TokenVariant::GreaterThan,
+
+						contents,
+						line,
+						column,
+					}
+				}
+			} else {
+				let contents = self.advance(1).to_string();
+				Token {
+					variant: TokenVariant::GreaterThan,
+
+					contents,
+					line,
+					column,
+				}
+			};
+			Ok(token)
+		} else if c == '!' {
+			let token = if let Some(next) = self.contents.chars().nth(1) {
+				if next == '=' {
+					let contents = self.advance("!=".len()).to_string();
+					Token {
+						variant: TokenVariant::NotEqual,
+
+						contents,
+						line,
+						column,
+					}
+				} else {
+					let contents = self.advance(1).to_string();
+					Token {
+						variant: TokenVariant::NotEqual,
+
+						contents,
+						line,
+						column,
+					}
+				}
+			} else {
+				let contents = self.advance(1).to_string();
+				Token {
+					variant: TokenVariant::NotEqual,
 
 					contents,
 					line,
@@ -384,15 +484,12 @@ impl<'a> Lexer<'a> {
 				',' => TokenVariant::Comma,
 				'.' => TokenVariant::Period,
 				'=' => TokenVariant::Equal,
-				'<' => TokenVariant::LessThan,
-				'>' => TokenVariant::GreaterThan,
-				'!' => TokenVariant::Bang,
 				'/' => TokenVariant::Backslash,
 				'+' => TokenVariant::Plus,
 				'*' => TokenVariant::Asterisk,
 				_ => unreachable!(),
 			};
-			let contents = self.advance(c.len_utf8());
+			let contents = self.advance(c.len_utf8()).to_string();
 			Ok(Token {
 				variant,
 
