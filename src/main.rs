@@ -7,6 +7,8 @@ use std::fmt::{
 };
 use std::fs;
 
+use std::time::Instant;
+
 mod lexer;
 use lexer::*;
 
@@ -34,9 +36,11 @@ fn main() -> Result<(), ProgramError> {
 	if let Some(path) = args.get(1) {
 		if path.ends_with(".toy") {
 			if let Ok(file) = fs::read_to_string(path) {
-				println!("Compiling {:?}", path);
+				let now = Instant::now();
+				let ast = { Parser::parse(&file).map_err(ProgramError::ParseError) };
+				let dur = Instant::now().duration_since(now);
 
-				let ast = Parser::parse(&file).map_err(ProgramError::ParseError)?;
+				println!("Parsed ({:?}) in {:?} ms", path, dur.as_secs_f64() * 1000.0);
 				println!("{:#?}", ast);
 
 				Ok(())
