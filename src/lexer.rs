@@ -16,13 +16,14 @@ pub enum TokenVariant {
 	Fn,
 	Struct,
 	Mut,
+	Return,
 
 	LeftCurly,
 	RightCurly,
 	LeftBracket,
 	RightBracket,
-	OpenParen,
-	CloseParen,
+	LeftParen,
+	RightParen,
 	Colon,
 	SemiColon,
 	Comma,
@@ -44,6 +45,7 @@ pub enum TokenVariant {
 	Char,
 	String,
 	Number,
+	Bool,
 
 	LineComment,
 	BlockComment,
@@ -84,6 +86,8 @@ pub struct Lexer<'a> {
 
 	line: usize,
 	column: usize,
+
+	ignore_comments: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -93,7 +97,14 @@ impl<'a> Lexer<'a> {
 
 			line: 1,
 			column: 1,
+
+			ignore_comments: false,
 		}
+	}
+
+	pub fn ignore_comments(mut self) -> Self {
+		self.ignore_comments = true;
+		self
 	}
 
 	fn advance(&mut self, amount: usize) -> &'a str {
@@ -165,6 +176,9 @@ impl<'a> Lexer<'a> {
 				"fn" => TokenVariant::Fn,
 				"struct" => TokenVariant::Struct,
 				"mut" => TokenVariant::Mut,
+				"return" => TokenVariant::Return,
+				"true" => TokenVariant::Bool,
+				"false" => TokenVariant::Bool,
 				_ => TokenVariant::Identifier,
 			};
 
@@ -269,13 +283,17 @@ impl<'a> Lexer<'a> {
 					}
 					.to_string();
 
-					Ok(Token {
-						variant: TokenVariant::LineComment,
+					if self.ignore_comments {
+						self.next()
+					} else {
+						Ok(Token {
+							variant: TokenVariant::LineComment,
 
-						contents,
-						line,
-						column,
-					})
+							contents,
+							line,
+							column,
+						})
+					}
 				} else if next == '*' {
 					let mut level = 0;
 					let mut chars = self.contents.char_indices().peekable();
@@ -316,13 +334,17 @@ impl<'a> Lexer<'a> {
 					};
 
 					let contents = self.advance(len).to_string();
-					Ok(Token {
-						variant: TokenVariant::BlockComment,
+					if self.ignore_comments {
+						self.next()
+					} else {
+						Ok(Token {
+							variant: TokenVariant::BlockComment,
 
-						contents,
-						line,
-						column,
-					})
+							contents,
+							line,
+							column,
+						})
+					}
 				} else {
 					let contents = self.advance(1).to_string();
 					Ok(Token {
@@ -477,8 +499,8 @@ impl<'a> Lexer<'a> {
 				'}' => TokenVariant::RightCurly,
 				'[' => TokenVariant::LeftBracket,
 				']' => TokenVariant::RightBracket,
-				'(' => TokenVariant::OpenParen,
-				')' => TokenVariant::CloseParen,
+				'(' => TokenVariant::LeftParen,
+				')' => TokenVariant::RightParen,
 				':' => TokenVariant::Colon,
 				';' => TokenVariant::SemiColon,
 				',' => TokenVariant::Comma,

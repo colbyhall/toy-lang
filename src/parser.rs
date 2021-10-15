@@ -17,6 +17,16 @@ pub enum ParseError {
 
 impl ParseError {
 	fn unexpected_token(expected: &[TokenVariant], found: Token) -> ParseError {
+		#[cfg(debug_assertions)]
+		panic!(
+			"{:?}",
+			ParseError::UnexpectedToken {
+				expected: expected.to_vec(),
+				found,
+			}
+		);
+
+		#[cfg(not(debug_assertions))]
 		ParseError::UnexpectedToken {
 			expected: expected.to_vec(),
 			found,
@@ -33,230 +43,387 @@ impl fmt::Display for ParseError {
 impl error::Error for ParseError {}
 
 #[derive(Debug)]
-pub struct StructMember {
-	name: Token, // Identifier
-	variant: Token,
+pub struct Ast {
+	pub body: Body,
 }
 
 #[derive(Debug)]
-pub struct StructDeclaration {
+pub struct Body {
+	pub statements: Vec<Statement>,
+}
+
+#[derive(Debug)]
+pub enum Statement {
+	Definition {
+		name: Token,
+		mutable: bool,
+		variant: Option<Token>,
+		expression: Expression,
+	},
+	Assign {
+		name: Expression,
+		expression: Token,
+	},
+	StructDeclaration {
+		name: Token,
+		members: Vec<Declaration>,
+	},
+	FuntionDeclaration {
+		name: Token,
+		params: Vec<Declaration>,
+		result: Option<Token>,
+		body: Body,
+	},
+	Expression(Expression),
+	Body(Body),
+}
+
+#[derive(Debug)]
+pub struct Declaration {
+	pub name: Token,
+	pub variant: Token,
+}
+
+#[derive(Debug)]
+pub enum Expression {
+	Branch {
+		if_branch: Box<Branch>,
+		else_if_branches: Vec<Branch>,
+		else_body: Option<Body>,
+	},
+	FunctionCall {
+		name: Token,
+		params: Vec<Expression>,
+	},
+	Constant {
+		token: Token,
+	},
+	StructLiteral {
+		variant: Token,
+		members: Vec<StructLiteralDefinition>,
+	},
+	Variable {
+		name: Token,
+		accesses: Vec<Token>,
+	},
+}
+
+#[derive(Debug)]
+pub struct Branch {
+	pub condition: Expression,
+	pub body: Body,
+}
+
+#[derive(Debug)]
+pub struct StructLiteralDefinition {
 	name: Token,
-	members: Vec<StructMember>,
-}
-
-#[derive(Debug)]
-pub struct FuntionDeclaration {
-	name: Token,
-	params: Vec<Token>,
-	result: Option<Token>,
-}
-
-#[derive(Debug)]
-pub struct ParsedData {
-	struct_declarations: Vec<StructDeclaration>,
-	function_declarations: Vec<FuntionDeclaration>,
+	expression: Expression,
 }
 
 pub struct Parser<'a> {
 	lexer: Lexer<'a>,
-	current: Token,
 }
 
 impl<'a> Parser<'a> {
-	pub fn parse(contents: &'a str) -> Result<ParsedData, ParseError> {
-		let mut lexer = Lexer::new(contents);
-		let current = lexer.next().map_err(ParseError::LexerError)?;
+	pub fn parse(contents: &'a str) -> Result<Ast, ParseError> {
+		let mut parser = Parser {
+			lexer: Lexer::new(contents).ignore_comments(),
+		};
 
-		let mut parser = Parser { lexer, current };
-
-		let mut struct_declarations = Vec::with_capacity(1024);
-		let mut function_declarations = Vec::with_capacity(1024);
+		let mut statements = Vec::with_capacity(1024);
 
 		loop {
-			match parser.current.variant {
+			match parser.peek()?.variant {
 				TokenVariant::Struct => {
-					struct_declarations.push(parser.struct_declaration()?);
+					statements.push(parser.struct_declaration()?);
 				}
 				TokenVariant::Fn => {
-					parser.function_declaration()?;
-				}
-				TokenVariant::LineComment | TokenVariant::BlockComment => {
-					parser.next()?;
+					statements.push(parser.function_declaration()?);
 				}
 				TokenVariant::EndOfFile => break,
 				_ => {
 					return Err(ParseError::unexpected_token(
 						&[TokenVariant::Struct, TokenVariant::Fn],
-						parser.current.clone(),
+						parser.next()?,
 					))
 				}
 			}
 		}
 
-		Ok(ParsedData {
-			struct_declarations,
-			function_declarations,
+		Ok(Ast {
+			body: Body { statements },
 		})
 	}
 
 	fn next(&mut self) -> Result<Token, ParseError> {
-		let result = self.current.clone();
-		self.current = self.lexer.next().map_err(ParseError::LexerError)?;
-		Ok(result)
+		self.lexer.next().map_err(ParseError::LexerError)
 	}
 
-	#[must_use]
-	fn accept(&mut self, variant: TokenVariant) -> Option<Result<Token, ParseError>> {
-		if self.current.variant == variant {
-			Some(self.next())
+	fn peek(&self) -> Result<Token, ParseError> {
+		self.lexer.peek().map_err(ParseError::LexerError)
+	}
+
+	fn accept(&mut self, variant: TokenVariant) -> Result<Option<Token>, ParseError> {
+		if self.peek()?.variant == variant {
+			self.next().map(Some)
 		} else {
-			None
+			Ok(None)
+		}
+	}
+
+	fn accept_peek(&self, variant: TokenVariant) -> Result<Option<Token>, ParseError> {
+		let peek = self.peek()?;
+		if peek.variant == variant {
+			Ok(Some(peek))
+		} else {
+			Ok(None)
 		}
 	}
 
 	fn expect(&mut self, variant: TokenVariant) -> Result<Token, ParseError> {
-		match self.accept(variant) {
-			Some(result) => result,
-			None => Err(ParseError::unexpected_token(
-				&[variant],
-				self.current.clone(),
-			)),
+		if let Some(token) = self.accept(variant)? {
+			Ok(token)
+		} else {
+			Err(ParseError::unexpected_token(&[variant], self.next()?))
 		}
 	}
 
-	fn struct_declaration(&mut self) -> Result<StructDeclaration, ParseError> {
+	fn expect_peek(&self, variant: TokenVariant) -> Result<Token, ParseError> {
+		if let Some(token) = self.accept_peek(variant)? {
+			Ok(token)
+		} else {
+			Err(ParseError::unexpected_token(&[variant], self.peek()?))
+		}
+	}
+
+	fn body(&mut self) -> Result<Body, ParseError> {
+		self.expect(TokenVariant::LeftCurly)?;
+		let mut statements = Vec::with_capacity(1024);
+		loop {
+			statements.push(self.statement()?);
+			if self.accept(TokenVariant::RightCurly)?.is_some() {
+				break;
+			}
+		}
+		Ok(Body { statements })
+	}
+
+	fn statement(&mut self) -> Result<Statement, ParseError> {
+		match self.peek()?.variant {
+			TokenVariant::Let => {
+				self.expect(TokenVariant::Let)?;
+				let mutable = self.accept(TokenVariant::Mut)?.is_some();
+				let name = self.expect(TokenVariant::Identifier)?;
+
+				let variant = None; // TODO
+
+				self.expect(TokenVariant::Equal)?;
+				let expression = self.expression()?;
+				self.expect(TokenVariant::SemiColon)?;
+				Ok(Statement::Definition {
+					name,
+					mutable,
+					variant,
+					expression,
+				})
+			}
+			TokenVariant::Fn => self.function_declaration(),
+			TokenVariant::Struct => self.struct_declaration(),
+			TokenVariant::LeftCurly => self.body().map(Statement::Body),
+			_ => {
+				let expression = self.expression()?;
+				match &expression {
+					Expression::Branch { .. } => {} // Do nothing as we don't want a semicolon after just bare branches
+					_ => {
+						self.expect(TokenVariant::SemiColon)?;
+					}
+				}
+				Ok(Statement::Expression(expression))
+			}
+		}
+	}
+
+	fn struct_declaration(&mut self) -> Result<Statement, ParseError> {
 		self.expect(TokenVariant::Struct)?;
 		let struct_name = self.expect(TokenVariant::Identifier)?;
 		self.expect(TokenVariant::LeftCurly)?;
 
 		let mut members = Vec::with_capacity(64);
 
-		while let Some(result) = self.accept(TokenVariant::Identifier) {
-			let member_name = result?;
-
+		while let Some(member_name) = self.accept(TokenVariant::Identifier)? {
 			self.expect(TokenVariant::Colon)?;
 			let variant_name = self.expect(TokenVariant::Identifier)?;
 
-			members.push(StructMember {
+			members.push(Declaration {
 				name: member_name,
 				variant: variant_name,
 			});
 
-			if let Some(result) = self.accept(TokenVariant::Comma) {
-				result?;
-			} else {
+			if self.accept(TokenVariant::Comma)?.is_none() {
 				break;
 			}
 		}
 
 		self.expect(TokenVariant::RightCurly)?;
-		Ok(StructDeclaration {
+		Ok(Statement::StructDeclaration {
 			name: struct_name,
 			members,
 		})
 	}
 
-	fn function_declaration(&mut self) -> Result<(), ParseError> {
+	fn function_declaration(&mut self) -> Result<Statement, ParseError> {
 		self.expect(TokenVariant::Fn)?;
-		self.expect(TokenVariant::Identifier)?;
-		self.expect(TokenVariant::OpenParen)?;
+		let name = self.expect(TokenVariant::Identifier)?;
+		self.expect(TokenVariant::LeftParen)?;
 
-		while let Some(result) = self.accept(TokenVariant::Identifier) {
-			result?;
+		let mut params = Vec::with_capacity(64);
 
+		while let Some(name) = self.accept(TokenVariant::Identifier)? {
 			self.expect(TokenVariant::Colon)?;
-			self.expect(TokenVariant::Identifier)?;
+			let variant = self.expect(TokenVariant::Identifier)?;
 
-			if let Some(result) = self.accept(TokenVariant::Comma) {
-				result?;
-			} else {
+			params.push(Declaration { name, variant });
+
+			if self.accept(TokenVariant::Comma)?.is_none() {
 				break;
 			}
 		}
 
-		self.expect(TokenVariant::CloseParen)?;
-		if let Some(result) = self.accept(TokenVariant::Arrow) {
-			result?;
-			self.expect(TokenVariant::Identifier)?;
-		}
+		self.expect(TokenVariant::RightParen)?;
 
-		if self.current.variant == TokenVariant::LeftCurly {
-			self.statement()
+		let result = if self.accept(TokenVariant::Arrow)?.is_some() {
+			Some(self.expect(TokenVariant::Identifier)?)
 		} else {
-			Err(ParseError::unexpected_token(
-				&[TokenVariant::LeftCurly],
-				self.current.clone(),
-			))
-		}
+			None
+		};
+
+		let body = self.body()?;
+
+		Ok(Statement::FuntionDeclaration {
+			name,
+			params,
+			result,
+			body,
+		})
 	}
 
-	fn statement(&mut self) -> Result<(), ParseError> {
-		match self.current.variant {
-			TokenVariant::Let => {
-				self.expect(TokenVariant::Let)?;
-				if let Some(result) = self.accept(TokenVariant::Mut) {
-					result?;
-				}
+	fn expression(&mut self) -> Result<Expression, ParseError> {
+		match self.peek()?.variant {
+			TokenVariant::Number
+			| TokenVariant::Char
+			| TokenVariant::String
+			| TokenVariant::Bool => Ok(Expression::Constant {
+				token: self.next()?,
+			}),
+			TokenVariant::Identifier => {
+				let name = self.next()?;
+				match self.peek()?.variant {
+					// Struct literals
+					TokenVariant::LeftCurly => {
+						self.expect(TokenVariant::LeftCurly)?;
 
-				self.expect(TokenVariant::Identifier)?;
+						let mut members = Vec::with_capacity(1024);
+						while let Some(name) = self.accept(TokenVariant::Identifier)? {
+							self.expect(TokenVariant::Colon)?;
+							let expression = self.expression()?;
 
-				self.expect(TokenVariant::Equal)?;
-				self.expect(TokenVariant::Identifier)?;
-				self.expect(TokenVariant::LeftCurly)?;
+							members.push(StructLiteralDefinition { name, expression });
 
-				while let Some(result) = self.accept(TokenVariant::Identifier) {
-					result?;
-					self.expect(TokenVariant::Colon)?;
-					self.expression()?;
-					if let Some(result) = self.accept(TokenVariant::Comma) {
-						result?;
-					} else {
-						break;
+							if self.accept(TokenVariant::Comma)?.is_none() {
+								break;
+							}
+						}
+
+						self.expect(TokenVariant::RightCurly)?;
+
+						Ok(Expression::StructLiteral {
+							variant: name,
+							members,
+						})
 					}
-				}
+					TokenVariant::LeftParen => {
+						self.expect(TokenVariant::LeftParen)?;
+						if self.accept(TokenVariant::RightParen)?.is_some() {
+							return Ok(Expression::FunctionCall {
+								name,
+								params: Vec::default(),
+							});
+						}
 
-				self.expect(TokenVariant::RightCurly)?;
-				Ok(())
+						let mut params = Vec::with_capacity(64);
+						loop {
+							params.push(self.expression()?);
+
+							if self.accept(TokenVariant::Comma)?.is_none() {
+								break;
+							}
+						}
+
+						self.expect(TokenVariant::RightParen)?;
+
+						Ok(Expression::FunctionCall { name, params })
+					}
+					TokenVariant::Period => {
+						let mut accesses = Vec::with_capacity(64);
+
+						loop {
+							if self.accept(TokenVariant::Period)?.is_some() {
+								accesses.push(self.expect(TokenVariant::Identifier)?);
+							} else {
+								break;
+							}
+						}
+						Ok(Expression::Variable { name, accesses })
+					}
+					_ => Ok(Expression::Variable {
+						name,
+						accesses: Vec::default(),
+					}),
+				}
 			}
-			TokenVariant::Fn => self.function_declaration(),
-			// TokenVariant::If => {
-			// 	self.expect(TokenVariant::If)?;
-			// 	self.condition()?;
-			// }
-			TokenVariant::LeftCurly => {
-				self.expect(TokenVariant::LeftCurly);
+			TokenVariant::If => {
+				self.expect(TokenVariant::If)?;
+
+				let if_branch = Branch {
+					condition: self.expression()?,
+					body: self.body()?,
+				};
+
+				let mut else_if_branches = Vec::with_capacity(64);
+				let mut else_body = None;
+
 				loop {
-					self.statement()?;
-
-					if let Some(result) = self.accept(TokenVariant::SemiColon) {
-						result?;
+					if self.accept(TokenVariant::Else)?.is_some() {
+						if self.accept(TokenVariant::If)?.is_some() {
+							else_if_branches.push(Branch {
+								condition: self.expression()?,
+								body: self.body()?,
+							});
+						} else {
+							else_body = Some(self.body()?);
+						}
 					} else {
 						break;
 					}
 				}
-				self.expect(TokenVariant::RightCurly);
-				Ok(())
+
+				Ok(Expression::Branch {
+					if_branch: Box::new(if_branch),
+					else_if_branches,
+					else_body,
+				})
 			}
-			_ => Err(ParseError::unexpected_token(&[], self.current.clone())),
+			_ => Err(ParseError::unexpected_token(
+				&[
+					TokenVariant::Number,
+					TokenVariant::Char,
+					TokenVariant::String,
+					TokenVariant::Bool,
+					TokenVariant::Identifier,
+					TokenVariant::If,
+				],
+				self.next()?,
+			)),
 		}
 	}
-
-	// fn condition(&mut self) -> Result<(), ParseError> {}
-
-	fn expression(&mut self) -> Result<(), ParseError> {
-		match self.current.variant {
-			TokenVariant::Number | TokenVariant::Char | TokenVariant::String => {
-				self.next().map(|_| ())
-			}
-			_ => Err(ParseError::unexpected_token(&[], self.current.clone())),
-		}
-	}
-
-	// fn term(&mut self) -> Result<(), ParseError> {}
-
-	// fn factor(&mut self) -> Result<(), ParseError> {
-	// 	match self.current.variant {
-	// 		_ => Err(ParseError::unexpected_token(&[], found)),
-	// 	}
-	// }
 }

@@ -3,6 +3,12 @@ struct Foo {
     b: char,
 	c: f32,
 	d: String,
+	e: bool,
+	f: Bar,
+}
+
+struct Bar {
+	a: u64,
 }
 
 // Single Line Comment
@@ -12,20 +18,38 @@ struct Foo {
  */
 
 fn main() {
-    let mut foo = Foo{
-        a: 42,
-        b: '😀',
+	let mut foo = Foo{
+		a: 42,
+		b: '😀',
 		c: 450.0,
 		d: "Hello World",
-    };
+		e: false,
+		f: Bar {
+			a: 123456789
+		}
+	};
 
-	fn bar(foo: Foo) -> bool {
-		return foo > 43;
+	struct Car {
+		name: String,
+		speed: f32,
+		is_fast: bool,
 	}
 
-    // if bar(foo) {
-	// 	foo.a = 123;
-	// } else {
-	// 	foo.c = 45.0;
-	// }
+	fn test(car: Car) -> bool {
+		true;
+	}
+
+	let foo = if foo.e {
+		let car = Car {
+			name: "Yo Mama",
+			speed: 320.0,
+			is_fast: true,
+		};
+
+		test(car);
+	} else if false {
+		println("Hello World");
+	} else {
+		panic();
+	};
 }
