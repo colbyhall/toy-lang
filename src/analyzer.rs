@@ -1,8 +1,6 @@
 use crate::parser::Ast;
 
-pub enum TypeInfo {
-	
-}
+pub enum TypeInfo {}
 
 pub enum AnalyzerError {}
 
