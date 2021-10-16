@@ -18,7 +18,7 @@ struct Bar {
  */
 
 fn main() {
-	let mut foo = Foo{
+	let foo = Foo{
 		a: 42,
 		b: '😀',
 		c: 450.0,
@@ -28,6 +28,9 @@ fn main() {
 			a: 123456789
 		}
 	};
+
+	let mut bar = false;
+	bar = true;
 
 	struct Car {
 		name: String,

@@ -58,11 +58,11 @@ pub enum Statement {
 		name: Token,
 		mutable: bool,
 		variant: Option<Token>,
-		expression: Expression,
+		value: Expression,
 	},
 	Assignment {
-		name: Expression,
-		expression: Token,
+		name: Expression, // Variable
+		value: Expression,
 	},
 	StructDeclaration {
 		name: Token,
@@ -183,7 +183,16 @@ impl<'a> Parser<'a> {
 		self.expect(TokenVariant::LeftCurly)?;
 		let mut statements = Vec::with_capacity(1024);
 		loop {
-			statements.push(self.statement()?);
+			let statement = self.statement()?;
+			match statement {
+				// These statements require semicolons
+				Statement::Assignment { .. } | Statement::Definition { .. } => {
+					self.expect(TokenVariant::SemiColon)?;
+				}
+				// These do not. Well expressions do but they handle that themselves
+				_ => {}
+			}
+			statements.push(statement);
 			if self.accept(TokenVariant::RightCurly)?.is_some() {
 				break;
 			}
@@ -202,12 +211,11 @@ impl<'a> Parser<'a> {
 
 				self.expect(TokenVariant::Equal)?;
 				let expression = self.expression()?;
-				self.expect(TokenVariant::SemiColon)?;
 				Ok(Statement::Definition {
 					name,
 					mutable,
 					variant,
-					expression,
+					value: expression,
 				})
 			}
 			TokenVariant::Fn => self.function_declaration(),
@@ -216,7 +224,15 @@ impl<'a> Parser<'a> {
 			_ => {
 				let expression = self.expression()?;
 				match &expression {
-					Expression::Branch { .. } => {} // Do nothing as we don't want a semicolon after just bare branches
+					Expression::Branch { .. } => {}
+					Expression::Variable { .. } => {
+						if self.accept(TokenVariant::Equal)?.is_some() {
+							let name = expression;
+							let value = self.expression()?;
+							return Ok(Statement::Assignment { name, value });
+						}
+						self.expect(TokenVariant::SemiColon)?;
+					}
 					_ => {
 						self.expect(TokenVariant::SemiColon)?;
 					}
