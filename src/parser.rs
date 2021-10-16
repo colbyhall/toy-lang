@@ -60,7 +60,7 @@ pub enum Statement {
 		variant: Option<Token>,
 		expression: Expression,
 	},
-	Assign {
+	Assignment {
 		name: Expression,
 		expression: Token,
 	},
@@ -159,7 +159,7 @@ impl<'a> Parser<'a> {
 		self.lexer.next().map_err(ParseError::LexerError)
 	}
 
-	fn peek(&self) -> Result<Token, ParseError> {
+	fn peek(&mut self) -> Result<Token, ParseError> {
 		self.lexer.peek().map_err(ParseError::LexerError)
 	}
 
@@ -171,28 +171,11 @@ impl<'a> Parser<'a> {
 		}
 	}
 
-	fn accept_peek(&self, variant: TokenVariant) -> Result<Option<Token>, ParseError> {
-		let peek = self.peek()?;
-		if peek.variant == variant {
-			Ok(Some(peek))
-		} else {
-			Ok(None)
-		}
-	}
-
 	fn expect(&mut self, variant: TokenVariant) -> Result<Token, ParseError> {
 		if let Some(token) = self.accept(variant)? {
 			Ok(token)
 		} else {
 			Err(ParseError::unexpected_token(&[variant], self.next()?))
-		}
-	}
-
-	fn expect_peek(&self, variant: TokenVariant) -> Result<Token, ParseError> {
-		if let Some(token) = self.accept_peek(variant)? {
-			Ok(token)
-		} else {
-			Err(ParseError::unexpected_token(&[variant], self.peek()?))
 		}
 	}
 

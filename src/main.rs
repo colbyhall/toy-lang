@@ -6,6 +6,7 @@ use std::fmt::{
 	Display,
 };
 use std::fs;
+use std::io::Write;
 
 use std::time::Instant;
 
@@ -14,6 +15,9 @@ use lexer::*;
 
 mod parser;
 use parser::*;
+
+mod analyzer;
+use analyzer::*;
 
 #[derive(Debug)]
 enum ProgramError {
@@ -36,12 +40,18 @@ fn main() -> Result<(), ProgramError> {
 	if let Some(path) = args.get(1) {
 		if path.ends_with(".toy") {
 			if let Ok(file) = fs::read_to_string(path) {
+				#[cfg(debug_assertions)]
+				// Create a result file to write any extra debug data out to
+				let output = fs::File::create(format!("{}.result", path)).unwrap();
+
 				let now = Instant::now();
-				let ast = { Parser::parse(&file).map_err(ProgramError::ParseError) };
+				let ast = { Parser::parse(&file).map_err(ProgramError::ParseError)? };
 				let dur = Instant::now().duration_since(now);
 
+				#[cfg(debug_assertions)]
+				writeln!(&output, "{:#?}", ast).unwrap();
+
 				println!("Parsed ({:?}) in {:?} ms", path, dur.as_secs_f64() * 1000.0);
-				println!("{:#?}", ast);
 
 				Ok(())
 			} else {

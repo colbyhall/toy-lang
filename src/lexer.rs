@@ -84,6 +84,8 @@ impl error::Error for LexerError {}
 pub struct Lexer<'a> {
 	contents: &'a str,
 
+	peek: Option<Token>,
+
 	line: usize,
 	column: usize,
 
@@ -94,6 +96,8 @@ impl<'a> Lexer<'a> {
 	pub fn new(contents: &'a str) -> Self {
 		Self {
 			contents,
+
+			peek: None,
 
 			line: 1,
 			column: 1,
@@ -153,121 +157,12 @@ impl<'a> Lexer<'a> {
 			self.advance(c.len_utf8());
 			return self.next();
 		}
-		// Identifier or Keyword
-		// Identifiers can start with a letter, '_', but not a number
-		else if c.is_alphabetic() || c == '_' {
-			let len = self
-				.contents
-				.char_indices()
-				.find(|(_, c)| !(c.is_alphanumeric() || *c == '_'))
-				.map(|(index, _)| index)
-				.unwrap_or(self.contents.len());
 
-			let identifier = self.advance(len);
-
-			// Keyword matching
-			let variant = match identifier {
-				"if" => TokenVariant::If,
-				"else" => TokenVariant::Else,
-				"let" => TokenVariant::Let,
-				"while" => TokenVariant::While,
-				"for" => TokenVariant::For,
-				"loop" => TokenVariant::Loop,
-				"fn" => TokenVariant::Fn,
-				"struct" => TokenVariant::Struct,
-				"mut" => TokenVariant::Mut,
-				"return" => TokenVariant::Return,
-				"true" => TokenVariant::Bool,
-				"false" => TokenVariant::Bool,
-				_ => TokenVariant::Identifier,
-			};
-
-			return Ok(Token {
-				variant,
-
-				contents: identifier.to_string(),
-				line,
-				column,
-			});
-		}
-
-		if c.is_numeric() {
-			// Number tokenization
-			if self.contents.starts_with("0x") {
-				todo!("Hex")
-			} else {
-				let mut len = 0;
-				let mut decimal_point = false;
-				for (i, c) in self.contents.chars().enumerate() {
-					if c == '.' {
-						if decimal_point {
-							return Err(LexerError::MultipleDecimalPoints);
-						}
-						decimal_point = true;
-						continue;
-					}
-
-					if c.is_alphabetic() || (i == 0 && (c != '-' && !c.is_numeric())) {
-						return Err(LexerError::InvalidNumberLiteral);
-					}
-
-					if !c.is_numeric() {
-						len = i;
-						break;
-					}
-				}
-
-				let number = self.advance(len);
-				return Ok(Token {
-					variant: TokenVariant::Number,
-
-					contents: number.to_string(),
-					line,
-					column,
-				});
-			}
-		} else if c == '\'' {
-			// Character tokenization
-			if let Some(value) = self.contents.chars().nth(1) {
-				if value == '\'' {
-					return Err(LexerError::InvalidCharacterLiteral);
-				}
-
-				if let Some(end) = self.contents.chars().nth(2) {
-					if end == '\'' {
-						let contents = self.advance(2 + value.len_utf8()).to_string();
-						return Ok(Token {
-							variant: TokenVariant::Char,
-
-							contents,
-							line,
-							column,
-						});
-					} else {
-						return Err(LexerError::UnterminatedSingleQuote);
-					}
-				} else {
-					return Err(LexerError::UnterminatedSingleQuote);
-				}
-			} else {
-				return Err(LexerError::UnterminatedSingleQuote);
-			}
-		} else if c == '\"' {
-			// String tokenization
-			let mut chars = self.contents.char_indices();
-			chars.next(); // Advance past "
-
-			if let Some((len, _)) = chars.find(|(_, c)| *c == '"') {
-				let string = self.advance(len + 1).to_string();
-				return Ok(Token {
-					variant: TokenVariant::String,
-
-					contents: string,
-					line,
-					column,
-				});
-			} else {
-				return Err(LexerError::UnterminatedDoubleQuote);
+		// If we're not ignoring comments then we can pop the peek
+		if !self.ignore_comments {
+			if let Some(peek) = self.peek.take() {
+				self.advance(peek.contents.len());
+				return Ok(peek);
 			}
 		}
 
@@ -284,15 +179,15 @@ impl<'a> Lexer<'a> {
 					.to_string();
 
 					if self.ignore_comments {
-						self.next()
+						return self.next();
 					} else {
-						Ok(Token {
+						return Ok(Token {
 							variant: TokenVariant::LineComment,
 
 							contents,
 							line,
 							column,
-						})
+						});
 					}
 				} else if next == '*' {
 					let mut level = 0;
@@ -335,37 +230,167 @@ impl<'a> Lexer<'a> {
 
 					let contents = self.advance(len).to_string();
 					if self.ignore_comments {
-						self.next()
+						return self.next();
 					} else {
-						Ok(Token {
+						return Ok(Token {
 							variant: TokenVariant::BlockComment,
 
 							contents,
 							line,
 							column,
-						})
+						});
 					}
 				} else {
 					let contents = self.advance(1).to_string();
-					Ok(Token {
+					return Ok(Token {
 						variant: TokenVariant::Backslash,
 
 						contents,
 						line,
 						column,
-					})
+					});
 				}
 			} else {
 				let contents = self.advance(1).to_string();
-				Ok(Token {
+				return Ok(Token {
 					variant: TokenVariant::Backslash,
 
 					contents,
 					line,
 					column,
-				})
+				});
 			}
-		} else if c == '-' {
+		}
+
+		// If we're ignoring the comments we need to wait until their eaten before
+		// popping the peek
+		if self.ignore_comments {
+			if let Some(peek) = self.peek.take() {
+				self.advance(peek.contents.len());
+				return Ok(peek);
+			}
+		}
+
+		// Identifier or Keyword
+		// Identifiers can start with a letter, '_', but not a number
+		if c.is_alphabetic() || c == '_' {
+			let len = self
+				.contents
+				.char_indices()
+				.find(|(_, c)| !(c.is_alphanumeric() || *c == '_'))
+				.map(|(index, _)| index)
+				.unwrap_or(self.contents.len());
+
+			let identifier = self.advance(len);
+
+			// Keyword matching
+			let variant = match identifier {
+				"if" => TokenVariant::If,
+				"else" => TokenVariant::Else,
+				"let" => TokenVariant::Let,
+				"while" => TokenVariant::While,
+				"for" => TokenVariant::For,
+				"loop" => TokenVariant::Loop,
+				"fn" => TokenVariant::Fn,
+				"struct" => TokenVariant::Struct,
+				"mut" => TokenVariant::Mut,
+				"return" => TokenVariant::Return,
+				"true" => TokenVariant::Bool,
+				"false" => TokenVariant::Bool,
+				_ => TokenVariant::Identifier,
+			};
+
+			return Ok(Token {
+				variant,
+
+				contents: identifier.to_string(),
+				line,
+				column,
+			});
+		}
+
+		// Number literal tokenization
+		if c.is_numeric() {
+			if self.contents.starts_with("0x") {
+				todo!("Hex")
+			} else {
+				let mut len = 0;
+				let mut decimal_point = false;
+				for (i, c) in self.contents.chars().enumerate() {
+					if c == '.' {
+						if decimal_point {
+							return Err(LexerError::MultipleDecimalPoints);
+						}
+						decimal_point = true;
+						continue;
+					}
+
+					if c.is_alphabetic() || (i == 0 && (c != '-' && !c.is_numeric())) {
+						return Err(LexerError::InvalidNumberLiteral);
+					}
+
+					if !c.is_numeric() {
+						len = i;
+						break;
+					}
+				}
+
+				let number = self.advance(len);
+				return Ok(Token {
+					variant: TokenVariant::Number,
+
+					contents: number.to_string(),
+					line,
+					column,
+				});
+			}
+		} else if c == '\'' {
+			// Character literal tokenization
+			if let Some(value) = self.contents.chars().nth(1) {
+				if value == '\'' {
+					return Err(LexerError::InvalidCharacterLiteral);
+				}
+
+				if let Some(end) = self.contents.chars().nth(2) {
+					if end == '\'' {
+						let contents = self.advance(2 + value.len_utf8()).to_string();
+						return Ok(Token {
+							variant: TokenVariant::Char,
+
+							contents,
+							line,
+							column,
+						});
+					} else {
+						return Err(LexerError::UnterminatedSingleQuote);
+					}
+				} else {
+					return Err(LexerError::UnterminatedSingleQuote);
+				}
+			} else {
+				return Err(LexerError::UnterminatedSingleQuote);
+			}
+		} else if c == '\"' {
+			// String literal tokenization
+			let mut chars = self.contents.char_indices();
+			chars.next(); // Advance past "
+
+			if let Some((len, _)) = chars.find(|(_, c)| *c == '"') {
+				let string = self.advance(len + 1).to_string();
+				return Ok(Token {
+					variant: TokenVariant::String,
+
+					contents: string,
+					line,
+					column,
+				});
+			} else {
+				return Err(LexerError::UnterminatedDoubleQuote);
+			}
+		}
+
+		// Arrow operator tokenization
+		if c == '-' {
 			let token = if let Some(next) = self.contents.chars().nth(1) {
 				if next == '>' {
 					let contents = self.advance("->".len()).to_string();
@@ -522,8 +547,13 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	pub fn peek(&self) -> Result<Token, LexerError> {
-		let mut clone = self.clone();
-		clone.next()
+	pub fn peek(&mut self) -> Result<Token, LexerError> {
+		if let Some(peek) = self.peek.as_ref() {
+			Ok(peek.clone())
+		} else {
+			let mut clone = self.clone();
+			self.peek = Some(clone.next()?);
+			Ok(self.peek.as_ref().unwrap().clone())
+		}
 	}
 }
